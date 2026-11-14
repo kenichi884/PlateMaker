@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PlateMaker - 線画レリーフプレート作成Webアプリ</title>
+  <link rel="stylesheet" href="./src/style.css" />
+  <!-- GitHub Pages 等の静的ホスティングでもビルドなしでそのまま動作する Import Map -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- ヘッダー -->
+    <header class="app-header">
+      <div class="brand-group">
+        <div class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 3L28 9.5V22.5L16 29L4 22.5V9.5L16 3Z" fill="rgba(56, 189, 248, 0.15)" stroke="#38bdf8"/>
+            <path d="M16 9L23 12.8V19.2L16 23L9 19.2V12.8L16 9Z" fill="rgba(251, 191, 36, 0.25)" stroke="#fbbf24"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="app-title">PlateMaker <span class="app-subtitle">線画レリーフプレート作成</span></h1>
+          <p class="app-spec-note">台座厚さ 2.0mm ＋ 線画盛り上がり 2.0mm（合計 4.0mm厚）・3Dプリンタ用水密STL出力</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="watertight-badge" title="Cura / PrusaSlicer / Bambu Studio 対応の水密バイナリSTL">
+          <span class="status-dot"></span>
+          <span>Watertight (水密) STL</span>
+        </div>
+        <button id="btn-download-stl" class="btn-primary btn-download">
+          <svg viewBox="0 0 20 20" width="18" height="18" fill="currentColor">
+            <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
+            <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+          </svg>
+          <span>STLダウンロード</span>
+          <span id="stl-size-hint" class="btn-badge">準備完了</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="app-main">
+      <!-- 左サイドバー：操作パネル -->
+      <aside class="control-sidebar">
+        <!-- 1. 写真・画像の入力 -->
+        <section class="panel-card">
+          <div class="section-header">
+            <span class="step-num">1</span>
+            <h2>写真・画像の入力</h2>
+          </div>
+
+          <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="画像をドラッグ＆ドロップまたはクリックして選択">
+            <input type="file" id="file-input" accept="image/*" hidden />
+            <svg class="drop-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.75">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+            </svg>
+            <div class="drop-text">
+              <strong>ドラッグ＆ドロップ</strong> または <span class="link-highlight">ファイルを選択</span>
+            </div>
+            <div class="drop-subtext">PNG / JPG / WebP / SVG 対応</div>
+          </div>
+
+          <div class="input-actions-row">
+            <button type="button" id="btn-camera" class="btn-secondary">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+                <path fill-rule="evenodd" d="M1 8a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 018.07 3h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0016.07 6H17a2 2 0 012 2v7a2 2 0 01-2 2H3a2 2 0 01-2-2V8zm13.5 3a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM10 14a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd" />
+              </svg>
+              <span>カメラで直接撮影</span>
+            </button>
+          </div>
+
+          <div class="sample-group">
+            <span class="sample-label">サンプル画像で即時確認:</span>
+            <div class="sample-buttons">
+              <button type="button" class="sample-btn active" data-sample="flower">🌸 花</button>
+              <button type="button" class="sample-btn" data-sample="cat">🐱 猫</button>
+              <button type="button" class="sample-btn" data-sample="geometric">💠 幾何学模様</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. 台座プレートの形を選択 -->
+        <section class="panel-card">
+          <div class="section-header">
+            <span class="step-num">2</span>
+            <h2>台座プレートの形状</h2>
+          </div>
+
+          <div class="shape-grid" id="shape-selector">
+            <button type="button" class="shape-btn active" data-shape="square">
+              <svg viewBox="0 0 40 40" width="28" height="28">
+                <rect x="6" y="6" width="28" height="28" rx="2" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="2.2"/>
+              </svg>
+              <span class="shape-name">正方形</span>
+              <span class="shape-dim">40×40mm</span>
+            </button>
+
+            <button type="button" class="shape-btn" data-shape="circle">
+              <svg viewBox="0 0 40 40" width="28" height="28">
+                <circle cx="20" cy="20" r="14" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="2.2"/>
+              </svg>
+              <span class="shape-name">丸</span>
+              <span class="shape-dim">直径40mm</span>
+            </button>
+
+            <button type="button" class="shape-btn" data-shape="bell">
+              <svg viewBox="0 0 40 40" width="28" height="28">
+                <path d="M20 4 C17.5 4 17 6 17.5 7.5 C12 9 10 15 9.5 25 C9 29 7 32 7 34 L33 34 C33 32 31 29 30.5 25 C30 15 28 9 22.5 7.5 C23 6 22.5 4 20 4 Z" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+              </svg>
+              <span class="shape-name">釣鐘型</span>
+              <span class="shape-dim">40×40mm</span>
+            </button>
+
+            <button type="button" class="shape-btn" data-shape="heart">
+              <svg viewBox="0 0 40 40" width="28" height="28">
+                <path d="M20 33 C20 33 5 23.5 5 13.5 C5 8.5 9 5.5 13.5 5.5 C16.8 5.5 19 7.5 20 9.5 C21 7.5 23.2 5.5 26.5 5.5 C31 5.5 35 8.5 35 13.5 C35 23.5 20 33 20 33 Z" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+              </svg>
+              <span class="shape-name">ハート形</span>
+              <span class="shape-dim">40×40mm</span>
+            </button>
+
+            <button type="button" class="shape-btn shape-btn-wide" data-shape="contour">
+              <svg viewBox="0 0 40 40" width="28" height="28">
+                <path d="M20 4 C25 4 29 7 31 11 C35 13 36 19 34 24 C35 29 31 35 25 35 C22 36 18 36 15 35 C9 35 5 29 6 24 C4 19 5 13 9 11 C11 7 15 4 20 4 Z" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="2" stroke-dasharray="3 2"/>
+                <circle cx="20" cy="20" r="8" fill="none" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <div class="shape-wide-info">
+                <span class="shape-name">線画の外周輪郭 +2mm膨張</span>
+                <span class="shape-dim">最大 50×50mm（線画の輪郭に沿う自由形状）</span>
+              </div>
+            </button>
+          </div>
+        </section>
+
+        <!-- 3. 線画抽出エンジン設定 -->
+        <section class="panel-card">
+          <div class="section-header">
+            <span class="step-num">3</span>
+            <h2>線画抽出エンジン設定</h2>
+            <button type="button" id="btn-reset-params" class="btn-text-reset" title="設定を初期値に戻す">リセット</button>
+          </div>
+
+          <!-- 抽出アルゴリズム選択 -->
+          <div class="control-block">
+            <label class="control-label">抽出アルゴリズム</label>
+            <div class="mode-tabs" id="mode-selector">
+              <button type="button" class="mode-tab" data-mode="sobel" title="写真の輪郭をくっきりエッジ検出">
+                <strong>輪郭抽出</strong>
+                <span>Sobel</span>
+              </button>
+              <button type="button" class="mode-tab active" data-mode="adaptive" title="陰影や照明ムラのある写真から線画をきれいに抽出">
+                <strong>局所適応2値化</strong>
+                <span>Adaptive</span>
+              </button>
+              <button type="button" class="mode-tab" data-mode="threshold" title="イラストや白黒スケッチ向け">
+                <strong>標準2値化</strong>
+                <span>Threshold</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 線の太さ調整 (モルフォロジー演算 -3 〜 +5) -->
+          <div class="control-block">
+            <div class="slider-header">
+              <label for="slider-thickness">線の太さ調整 (膨張・収縮)</label>
+              <span id="val-thickness" class="slider-val">0 (標準)</span>
+            </div>
+            <input type="range" id="slider-thickness" min="-3" max="5" step="1" value="0" />
+            <div class="slider-ticks">
+              <span>-3 (細く/収縮)</span>
+              <span>0</span>
+              <span>+5 (太く/膨張)</span>
+            </div>
+          </div>
+
+          <!-- 閾値 (Threshold) -->
+          <div class="control-block">
+            <div class="slider-header">
+              <label for="slider-threshold">閾値 (線の検出感度)</label>
+              <span id="val-threshold" class="slider-val">135</span>
+            </div>
+            <input type="range" id="slider-threshold" min="10" max="245" step="1" value="135" />
+          </div>
+
+          <!-- コントラスト -->
+          <div class="control-block">
+            <div class="slider-header">
+              <label for="slider-contrast">コントラスト</label>
+              <span id="val-contrast" class="slider-val">+20</span>
+            </div>
+            <input type="range" id="slider-contrast" min="-80" max="100" step="1" value="20" />
+          </div>
+
+          <!-- ぼかし (ノイズ抑制) -->
+          <div class="control-block">
+            <div class="slider-header">
+              <label for="slider-blur">ぼかし (ノイズ軽減)</label>
+              <span id="val-blur" class="slider-val">1 px</span>
+            </div>
+            <input type="range" id="slider-blur" min="0" max="8" step="1" value="1" />
+          </div>
+
+          <!-- 図柄配置サイズ -->
+          <div class="control-block">
+            <div class="slider-header">
+              <label for="slider-scale">図柄サイズ調整</label>
+              <span id="val-scale" class="slider-val">88%</span>
+            </div>
+            <input type="range" id="slider-scale" min="45" max="125" step="1" value="88" />
+          </div>
+
+          <!-- 白黒反転 -->
+          <div class="toggle-row">
+            <label class="toggle-label" for="chk-invert">
+              <input type="checkbox" id="chk-invert" />
+              <span class="toggle-switch"></span>
+              <span>白黒反転（ネガポジ反転）</span>
+            </label>
+          </div>
+        </section>
+      </aside>
+
+      <!-- 右ワークスペース：2D線画プレビュー ＆ 3Dプレビュー -->
+      <section class="workspace-area">
+        <!-- 3D ビューアコンテナ -->
+        <div class="viewer-card">
+          <!-- 上部オーバーレイツールバー -->
+          <div class="viewer-toolbar">
+            <div class="toolbar-group">
+              <span class="toolbar-label">視点リセット:</span>
+              <button type="button" id="btn-view-top" class="toolbar-btn" title="真上からの視点に切り替え">
+                <svg viewBox="0 0 20 20" width="15" height="15" fill="currentColor">
+                  <path d="M10 3a7 7 0 100 14 7 7 0 000-14zm-5.5 7a5.5 5.5 0 1111 0 5.5 5.5 0 01-11 0z"/>
+                  <circle cx="10" cy="10" r="2.2"/>
+                </svg>
+                <span>上面視点</span>
+              </button>
+              <button type="button" id="btn-view-oblique" class="toolbar-btn active" title="立体感がわかりやすい斜め視点に切り替え">
+                <svg viewBox="0 0 20 20" width="15" height="15" fill="currentColor">
+                  <path d="M10 2L3 6v8l7 4 7-4V6l-7-4zm0 2.18L14.93 7 10 9.82 5.07 7 10 4.18zM4.5 8.4l4.75 2.71v5.17L4.5 13.57V8.4zm6.25 7.88v-5.17L15.5 8.4v5.17l-4.75 2.71z"/>
+                </svg>
+                <span>斜め視点</span>
+              </button>
+              <button type="button" id="btn-wireframe" class="toolbar-btn" title="ワイヤーフレーム表示の切り替え">
+                <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.7">
+                  <polygon points="10,2 18,7 18,13 10,18 2,13 2,7" />
+                  <line x1="2" y1="7" x2="18" y2="13" />
+                  <line x1="18" y1="7" x2="2" y2="13" />
+                  <line x1="10" y1="2" x2="10" y2="18" />
+                </svg>
+                <span>ワイヤーフレーム</span>
+              </button>
+            </div>
+
+            <div class="toolbar-group filament-bar">
+              <span class="toolbar-label">フィラメント色:</span>
+              <div class="filament-swatches" id="filament-selector">
+                <button type="button" class="swatch-btn" data-filament="white" title="ホワイト (PLA White)" style="--swatch-color: #f8fafc;"></button>
+                <button type="button" class="swatch-btn" data-filament="gray" title="グレー (Modeling Gray)" style="--swatch-color: #94a3b8;"></button>
+                <button type="button" class="swatch-btn" data-filament="black" title="ブラック (Matte Black)" style="--swatch-color: #27272a;"></button>
+                <button type="button" class="swatch-btn active" data-filament="silkgold" title="シルクゴールド (Silk Gold)" style="--swatch-color: #f59e0b;"></button>
+                <button type="button" class="swatch-btn" data-filament="silksilver" title="シルクシルバー (Silk Silver)" style="--swatch-color: #cbd5e1;"></button>
+                <button type="button" class="swatch-btn" data-filament="terracotta" title="テラコッタ (Terracotta)" style="--swatch-color: #ea580c;"></button>
+                <button type="button" class="swatch-btn" data-filament="mint" title="ミントグリーン (Mint)" style="--swatch-color: #10b981;"></button>
+              </div>
+              <span id="filament-name-label" class="filament-name">シルクゴールド</span>
+            </div>
+          </div>
+
+          <!-- Three.js キャンバス描画領域 -->
+          <div id="three-container" class="three-viewport"></div>
+
+          <!-- 2D 線画プレビュー フローティングカード -->
+          <div class="preview-2d-dock">
+            <div class="preview-2d-header">
+              <span>抽出された線画 ＆ 台座形状 (2D)</span>
+              <label class="guide-toggle" title="台座外周ラインの表示切替">
+                <input type="checkbox" id="chk-plate-guide" checked />
+                <span>外枠表示</span>
+              </label>
+            </div>
+            <div class="preview-2d-body">
+              <canvas id="canvas-lineart" width="320" height="320"></canvas>
+            </div>
+          </div>
+
+          <!-- 下部 3Dモデル寸法・スペック情報バー -->
+          <div class="viewer-StatusBar">
+            <div class="spec-pill">
+              <span class="spec-key">外形サイズ:</span>
+              <strong id="spec-dimensions">40.0 × 40.0 × 4.0 mm</strong>
+            </div>
+            <div class="spec-pill">
+              <span class="spec-key">断面構成:</span>
+              <strong>台座 2.0mm + 線画 2.0mm</strong>
+            </div>
+            <div class="spec-pill">
+              <span class="spec-key">ポリゴン数:</span>
+              <strong id="spec-triangles">-- tris</strong>
+            </div>
+            <div class="spec-pill hint-pill">
+              <span>🖱️ 左ドラッグ: 回転 / 右ドラッグ: パン / ホイール: ズーム</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- カメラ直接撮影モーダル -->
+  <div id="camera-modal" class="modal-backdrop" hidden>
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>📷 カメラで直接撮影</h3>
+        <button type="button" id="btn-close-camera" class="modal-close" aria-label="閉じる">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="video-wrapper">
+          <video id="camera-video" autoplay playsinline muted></video>
+          <div class="camera-guide-frame"></div>
+        </div>
+        <p id="camera-error" class="camera-error" hidden></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="btn-switch-camera" class="btn-secondary">🔄 カメラ切替</button>
+        <button type="button" id="btn-capture-photo" class="btn-primary">📸 この画面を撮影して取り込む</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
