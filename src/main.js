@@ -1,6 +1,9 @@
 import { createSampleImage } from './samples.js';
 import { processImageToLineArt, renderLineArtPreview } from './imageProcessor.js';
 import {
+  BASE_THICKNESS_MM,
+  RELIEF_THICKNESS_MM,
+  DEFAULT_CONTOUR_OFFSET_MM,
   buildPlateMasks,
   generateWatertightPlateMesh,
   exportBinarySTL
@@ -12,6 +15,9 @@ const state = {
   sourceImage: null,
   sourceName: 'flower',
   shapeId: 'square',
+  contourOffsetMm: DEFAULT_CONTOUR_OFFSET_MM,
+  baseThicknessMm: BASE_THICKNESS_MM,
+  reliefThicknessMm: RELIEF_THICKNESS_MM,
   mode: 'adaptive',
   thickness: 0,
   threshold: 135,
@@ -107,14 +113,19 @@ function runFullPipeline() {
   );
 
   // 2. 台座形状＆レリーフマスク構築
-  currentPlateMasks = buildPlateMasks(currentLineArtData, state.shapeId);
+  currentPlateMasks = buildPlateMasks(currentLineArtData, state.shapeId, {
+    contourOffsetMm: state.contourOffsetMm
+  });
 
   // 3. 2Dプレビューキャンバス更新
   const canvas2d = document.getElementById('canvas-lineart');
   renderLineArtPreview(canvas2d, currentLineArtData, currentPlateMasks, state.showPlateGuide);
 
   // 4. 3Dメッシュ生成＆Three.jsプレビュー更新
-  currentMeshData = generateWatertightPlateMesh(currentPlateMasks);
+  currentMeshData = generateWatertightPlateMesh(currentPlateMasks, {
+    baseThicknessMm: state.baseThicknessMm,
+    reliefThicknessMm: state.reliefThicknessMm
+  });
   viewer3d.updateMesh(currentMeshData);
 
   // 5. ステータスUI更新
@@ -130,11 +141,23 @@ function schedulePipelineUpdate() {
 
 function updateSpecsUI(meshData) {
   const dimEl = document.getElementById('spec-dimensions');
+  const thickEl = document.getElementById('spec-thickness');
+  const headerNoteEl = document.getElementById('header-spec-note');
   const triEl = document.getElementById('spec-triangles');
   const sizeHintEl = document.getElementById('stl-size-hint');
 
+  const baseStr = meshData.baseThicknessMm.toFixed(1);
+  const reliefStr = meshData.reliefThicknessMm.toFixed(1);
+  const totalStr = meshData.depthMm.toFixed(1);
+
   if (dimEl) {
-    dimEl.textContent = `${meshData.widthMm.toFixed(1)} × ${meshData.heightMm.toFixed(1)} × ${meshData.depthMm.toFixed(1)} mm`;
+    dimEl.textContent = `${meshData.widthMm.toFixed(1)} × ${meshData.heightMm.toFixed(1)} × ${totalStr} mm`;
+  }
+  if (thickEl) {
+    thickEl.textContent = `台座 ${baseStr}mm + 線画 ${reliefStr}mm`;
+  }
+  if (headerNoteEl) {
+    headerNoteEl.textContent = `台座厚さ ${baseStr}mm ＋ 線画盛り上がり ${reliefStr}mm（合計 ${totalStr}mm厚）・3Dプリンタ用水密STL出力`;
   }
   if (triEl) {
     triEl.textContent = `${meshData.triangleCount.toLocaleString()} tris`;
@@ -315,7 +338,7 @@ function bindParameterEvents() {
 }
 
 /**
- * 台座形状の選択イベント
+ * 台座形状および厚さの選択イベント
  */
 function bindShapeEvents() {
   document.querySelectorAll('#shape-selector .shape-btn').forEach((btn) => {
@@ -327,6 +350,69 @@ function bindShapeEvents() {
       schedulePipelineUpdate();
     });
   });
+
+  const bindThicknessInput = (inputId, stateKey, defaultValue) => {
+    const inputEl = document.getElementById(inputId);
+    if (!inputEl) return;
+
+    const clampThickness = (val) => Math.min(20, Math.max(0.1, Number(val.toFixed(2))));
+
+    inputEl.addEventListener('input', () => {
+      const parsed = parseFloat(inputEl.value);
+      if (Number.isFinite(parsed) && parsed >= 0.1) {
+        state[stateKey] = clampThickness(parsed);
+        schedulePipelineUpdate();
+      }
+    });
+
+    inputEl.addEventListener('change', () => {
+      const parsed = parseFloat(inputEl.value);
+      const valid = Number.isFinite(parsed) ? clampThickness(parsed) : defaultValue;
+      state[stateKey] = valid;
+      inputEl.value = valid.toFixed(1);
+      schedulePipelineUpdate();
+    });
+  };
+
+  bindThicknessInput('input-base-thickness', 'baseThicknessMm', BASE_THICKNESS_MM);
+  bindThicknessInput('input-relief-thickness', 'reliefThicknessMm', RELIEF_THICKNESS_MM);
+
+  // 外周輪郭の膨張長さ (mm)
+  const contourInput = document.getElementById('input-contour-offset');
+  const contourBadge = document.getElementById('contour-offset-badge');
+  if (contourInput) {
+    const clampOffset = (val) => Math.min(10.0, Math.max(0.1, Number(val.toFixed(2))));
+
+    const activateContourShapeIfNeeded = () => {
+      if (state.shapeId !== 'contour') {
+        state.shapeId = 'contour';
+        document.querySelectorAll('#shape-selector .shape-btn').forEach((b) => {
+          b.classList.toggle('active', b.dataset.shape === 'contour');
+        });
+      }
+    };
+
+    contourInput.addEventListener('input', () => {
+      const parsed = parseFloat(contourInput.value);
+      if (Number.isFinite(parsed) && parsed >= 0.1) {
+        const clamped = clampOffset(parsed);
+        state.contourOffsetMm = clamped;
+        if (contourBadge) contourBadge.textContent = clamped.toFixed(1);
+        activateContourShapeIfNeeded();
+        schedulePipelineUpdate();
+      }
+    });
+
+    contourInput.addEventListener('change', () => {
+      const parsed = parseFloat(contourInput.value);
+      const valid = Number.isFinite(parsed) ? clampOffset(parsed) : DEFAULT_CONTOUR_OFFSET_MM;
+      state.contourOffsetMm = valid;
+      contourInput.value = valid.toFixed(1);
+      if (contourBadge) contourBadge.textContent = valid.toFixed(1);
+      activateContourShapeIfNeeded();
+      schedulePipelineUpdate();
+    });
+  }
 }
 
 /**
@@ -469,20 +555,38 @@ function bindCameraEvents() {
 }
 
 /**
- * 水密バイナリSTLダウンロード機能
+ * 水密バイナリSTLダウンロード機能（ファイル名指定モーダル対応）
  */
 function bindDownloadEvent() {
   const btnDownload = document.getElementById('btn-download-stl');
-  btnDownload.addEventListener('click', () => {
-    if (!currentMeshData) return;
+  const modal = document.getElementById('stl-filename-modal');
+  const inputFilename = document.getElementById('input-stl-filename');
+  const btnClose = document.getElementById('btn-close-stl-modal');
+  const btnCancel = document.getElementById('btn-cancel-stl-download');
+  const btnConfirm = document.getElementById('btn-confirm-stl-download');
 
+  const getDefaultBaseName = () => {
+    const w = Math.round(currentMeshData.widthMm);
+    const h = Math.round(currentMeshData.heightMm);
+    const d = currentMeshData.depthMm.toFixed(1);
+    return `platemaker_${state.sourceName}_${state.shapeId}_${w}x${h}x${d}mm`;
+  };
+
+  const sanitizeBaseName = (raw) => {
+    const stripped = String(raw || '')
+      .trim()
+      .replace(/\.stl$/i, '')
+      .replace(/[\\/:*?"<>|]/g, '_');
+    return stripped || getDefaultBaseName();
+  };
+
+  const executeDownload = (baseName) => {
+    if (!currentMeshData) return;
     const stlBuffer = exportBinarySTL(currentMeshData);
     const blob = new Blob([stlBuffer], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
 
-    const w = Math.round(currentMeshData.widthMm);
-    const h = Math.round(currentMeshData.heightMm);
-    const fileName = `platemaker_${state.sourceName}_${state.shapeId}_${w}x${h}x4mm.stl`;
+    const fileName = `${sanitizeBaseName(baseName)}.stl`;
 
     const a = document.createElement('a');
     a.href = url;
@@ -492,6 +596,40 @@ function bindDownloadEvent() {
     document.body.removeChild(a);
 
     setTimeout(() => URL.revokeObjectURL(url), 5000);
+  };
+
+  const closeModal = () => {
+    modal.hidden = true;
+  };
+
+  btnDownload.addEventListener('click', () => {
+    if (!currentMeshData) return;
+    inputFilename.value = getDefaultBaseName();
+    modal.hidden = false;
+    inputFilename.focus();
+    inputFilename.select();
+  });
+
+  btnConfirm.addEventListener('click', () => {
+    executeDownload(inputFilename.value);
+    closeModal();
+  });
+
+  inputFilename.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      executeDownload(inputFilename.value);
+      closeModal();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closeModal();
+    }
+  });
+
+  btnClose.addEventListener('click', closeModal);
+  btnCancel.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
   });
 }
 

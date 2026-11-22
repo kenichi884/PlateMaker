@@ -39,15 +39,16 @@ export const PLATE_SHAPES = {
   },
   contour: {
     id: 'contour',
-    label: '輪郭+2mm (50×50mm)',
+    label: '輪郭膨張 (50×50mm)',
     widthMm: 50,
     heightMm: 50
   }
 };
 
-export const BASE_THICKNESS_MM = 2.0;
-export const RELIEF_THICKNESS_MM = 2.0;
-export const TOTAL_THICKNESS_MM = BASE_THICKNESS_MM + RELIEF_THICKNESS_MM; // 4.0 mm
+export const BASE_THICKNESS_MM = 0.4;
+export const RELIEF_THICKNESS_MM = 1.0;
+export const TOTAL_THICKNESS_MM = Number((BASE_THICKNESS_MM + RELIEF_THICKNESS_MM).toFixed(2)); // 1.4 mm
+export const DEFAULT_CONTOUR_OFFSET_MM = 1.0;
 
 // ハート形状の高精度ポリゴンキャッシュ（40x40mmに厳密正規化）
 let cachedHeartPolygon = null;
@@ -439,9 +440,13 @@ function enforceManifoldGrid(mask, width, height) {
 /**
  * 線画マスクと選択された台座形状から、物理グリッド上の `baseMask` と `reliefMask` を構築する
  */
-export function buildPlateMasks(lineArtData, shapeId = 'square') {
+export function buildPlateMasks(lineArtData, shapeId = 'square', options = {}) {
   const { mask: srcMask, width: gridW, height: gridH } = lineArtData;
   const shapeInfo = PLATE_SHAPES[shapeId] || PLATE_SHAPES.square;
+  const rawOffset = Number(options.contourOffsetMm);
+  const contourOffsetMm = Number.isFinite(rawOffset) && rawOffset >= 0.1
+    ? Math.min(10.0, rawOffset)
+    : DEFAULT_CONTOUR_OFFSET_MM;
 
   const baseMask = new Uint8Array(gridW * gridH);
   const reliefMask = new Uint8Array(gridW * gridH);
@@ -450,7 +455,7 @@ export function buildPlateMasks(lineArtData, shapeId = 'square') {
   const marginPx = 2;
 
   if (shapeId === 'contour') {
-    // 「線画の外側の輪郭から2mm外側に膨らんだ形で50x50mmの大きさ」
+    // 「線画の外側の輪郭から指定mm外側に膨らんだ形で50x50mmの大きさ」
     // 1. 入力線画のバウンディングボックスを取得
     let minX = gridW, maxX = -1, minY = gridH, maxY = -1;
     for (let y = 0; y < gridH; y++) {
@@ -473,10 +478,10 @@ export function buildPlateMasks(lineArtData, shapeId = 'square') {
     }
 
     // 物理領域: 50mm x 50mm (外周余白を含め 52mm ドメインにマッピング)
-    // 線画の長辺が 46.0mm になるよう正規化し、外側へ +2.0mm (両側で +4.0mm) 膨張させるとちょうど 50.0mm になる
+    // 線画の長辺が (50.0 - contourOffsetMm * 2) mm になるよう正規化し、外側へ +contourOffsetMm 膨張させるとちょうど 50.0mm になる
     const domainMm = 52.0;
     const mmPerPx = domainMm / gridW;
-    const targetLineSpanMm = 46.0; // 46mm + 2mm*2 = 50.0mm
+    const targetLineSpanMm = Math.max(10.0, 50.0 - contourOffsetMm * 2.0);
     const targetLineSpanPx = targetLineSpanMm / mmPerPx;
 
     const srcSpanX = Math.max(1, maxX - minX + 1);
@@ -521,14 +526,14 @@ export function buildPlateMasks(lineArtData, shapeId = 'square') {
       silhouette[i] = (reliefMask[i] || distFromExteriorPx[i] > closeRadiusPx) ? 1 : 0;
     }
 
-    // 3. シルエットの外側輪郭から厳密に 2.0mm 外側へ膨張させる
+    // 3. シルエットの外側輪郭から指定された contourOffsetMm 分外側へ膨張させる
     const distFromSilhouettePx = computeEDT(silhouette, gridW, gridH);
-    const offset2mmPx = 2.0 / mmPerPx;
+    const offsetPx = contourOffsetMm / mmPerPx;
 
     for (let y = marginPx; y < gridH - marginPx; y++) {
       for (let x = marginPx; x < gridW - marginPx; x++) {
         const idx = y * gridW + x;
-        if (distFromSilhouettePx[idx] <= offset2mmPx) {
+        if (distFromSilhouettePx[idx] <= offsetPx) {
           baseMask[idx] = 1;
         }
       }
@@ -755,11 +760,17 @@ function computeSmoothedGridVertices(baseMask, reliefMask, gridW, gridH, domainW
 
 /**
  * 水密（Watertight / 2-Manifold）な3Dメッシュデータを生成する
- * - 台座層: z = 0.0 〜 2.0 mm
- * - 線画レリーフ層: z = 2.0 〜 4.0 mm
- * - すべての垂直壁を [0, 2] 層と [2, 4] 層に分割することで T-junction を完全にゼロにする
+ * - 台座層: z = 0.0 〜 baseThicknessMm
+ * - 線画レリーフ層: z = baseThicknessMm 〜 (baseThicknessMm + reliefThicknessMm)
+ * - すべての垂直壁を台座層とレリーフ層に分割することで T-junction を完全にゼロにする
  */
-export function generateWatertightPlateMesh(plateMaskData) {
+export function generateWatertightPlateMesh(plateMaskData, options = {}) {
+  const rawBase = Number(options.baseThicknessMm);
+  const rawRelief = Number(options.reliefThicknessMm);
+  const baseThicknessMm = Number.isFinite(rawBase) && rawBase >= 0.1 ? Math.min(20, rawBase) : BASE_THICKNESS_MM;
+  const reliefThicknessMm = Number.isFinite(rawRelief) && rawRelief >= 0.1 ? Math.min(20, rawRelief) : RELIEF_THICKNESS_MM;
+  const totalThicknessMm = Number((baseThicknessMm + reliefThicknessMm).toFixed(2));
+
   const {
     baseMask,
     reliefMask,
@@ -850,8 +861,8 @@ export function generateWatertightPlateMesh(plateMaskData) {
   };
 
   const z0 = 0.0;
-  const zBase = BASE_THICKNESS_MM;    // 2.0 mm
-  const zTop = TOTAL_THICKNESS_MM;    // 4.0 mm
+  const zBase = baseThicknessMm;
+  const zTop = baseThicknessMm + reliefThicknessMm;
 
   for (let y = 0; y < gridH; y++) {
     const row = y * gridW;
@@ -962,9 +973,9 @@ export function generateWatertightPlateMesh(plateMaskData) {
     triangleCount: triCount,
     widthMm: Number(finalWidthMm.toFixed(1)),
     heightMm: Number(finalHeightMm.toFixed(1)),
-    depthMm: TOTAL_THICKNESS_MM,
-    baseThicknessMm: BASE_THICKNESS_MM,
-    reliefThicknessMm: RELIEF_THICKNESS_MM,
+    depthMm: totalThicknessMm,
+    baseThicknessMm: Number(baseThicknessMm.toFixed(2)),
+    reliefThicknessMm: Number(reliefThicknessMm.toFixed(2)),
     isWatertight: true
   };
 }
@@ -988,7 +999,9 @@ export function exportBinarySTL(meshData) {
   const view = new DataView(buffer);
 
   // 80バイトヘッダ
-  const headerText = 'PlateMaker Watertight Binary STL (Unit: mm, Base: 2.0mm, Relief: +2.0mm)';
+  const baseStr = (meshData.baseThicknessMm ?? BASE_THICKNESS_MM).toFixed(1);
+  const reliefStr = (meshData.reliefThicknessMm ?? RELIEF_THICKNESS_MM).toFixed(1);
+  const headerText = `PlateMaker Watertight Binary STL (Unit: mm, Base: ${baseStr}mm, Relief: +${reliefStr}mm)`;
   for (let i = 0; i < 80; i++) {
     view.setUint8(i, i < headerText.length ? headerText.charCodeAt(i) : 0x20);
   }

@@ -388,6 +388,83 @@ html, body {
   color: var(--text-muted);
 }
 
+/* Contour Offset Input */
+.contour-offset-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.contour-offset-row label {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.contour-offset-input-wrap {
+  width: 96px;
+}
+
+/* Thickness Number Inputs */
+.thickness-inputs-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(46, 60, 82, 0.7);
+}
+
+.number-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.number-input-group label {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.number-input-wrap {
+  display: flex;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 0 8px;
+  transition: border-color 0.15s;
+}
+
+.number-input-wrap:focus-within {
+  border-color: var(--border-highlight);
+}
+
+.number-input-wrap input[type="number"] {
+  width: 100%;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-main);
+  font-size: 0.86rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 6px 0;
+}
+
+.unit-suffix {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
 /* Mode Tabs */
 .control-block {
   display: flex;
@@ -837,6 +914,52 @@ input[type="range"]::-webkit-slider-thumb {
 
 .modal-footer .btn-primary {
   flex: 2;
+}
+
+.modal-dialog-sm {
+  width: min(92vw, 440px);
+}
+
+.filename-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filename-field label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.filename-input-wrap {
+  display: flex;
+  align-items: center;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0 12px;
+  transition: border-color 0.15s;
+}
+
+.filename-input-wrap:focus-within {
+  border-color: var(--border-highlight);
+}
+
+.filename-input-wrap input[type="text"] {
+  width: 100%;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text-main);
+  font-size: 0.92rem;
+  padding: 10px 0;
+}
+
+.filename-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
 }
 
 /* Responsive adjustments */

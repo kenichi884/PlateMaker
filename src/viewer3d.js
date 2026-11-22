@@ -71,7 +71,7 @@ export const FILAMENT_PRESETS = {
 export class PlateViewer3D {
   constructor(container) {
     this.container = container;
-    this.currentFilament = 'silkgold';
+    this.currentFilament = 'white';
     this.isWireframe = false;
     this.plateMesh = null;
 
@@ -217,7 +217,10 @@ export class PlateViewer3D {
     geometry.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
 
     // 高さと法線に応じた自然な陰影コントラスト（頂点カラー）を付与して
-    // 台座(2mm)と盛り上がり線画(4mm)の境界をどの角度からでも視認しやすくする
+    // 台座と盛り上がり線画の境界をどの角度からでも視認しやすくする
+    const zBase = meshData.baseThicknessMm ?? 0.4;
+    const zTop = meshData.depthMm ?? 1.4;
+    const eps = Math.min(0.05, Math.max(0.005, (zTop - zBase) * 0.1));
     const vertCount = positions.length / 3;
     const colors = new Float32Array(positions.length);
     for (let i = 0; i < vertCount; i++) {
@@ -225,14 +228,14 @@ export class PlateViewer3D {
       const nz = normals[i * 3 + 2];
       let shade = 1.0;
 
-      if (z >= 3.9 && nz > 0.5) {
-        // 線画レリーフ上面 (z = 4.0mm): 明るく際立たせる
+      if (z >= zTop - eps && nz > 0.5) {
+        // 線画レリーフ上面: 明るく際立たせる
         shade = 1.06;
-      } else if (z > 2.01 && Math.abs(nz) < 0.5) {
-        // 線画レリーフ側面壁 (z = 2.0〜4.0mm): 立体感を強める微細なアンビエントオクルージョン
+      } else if (z > zBase + eps * 0.2 && Math.abs(nz) < 0.5) {
+        // 線画レリーフ側面壁: 立体感を強める微細なアンビエントオクルージョン
         shade = 0.82;
-      } else if (Math.abs(z - 2.0) < 0.1 && nz > 0.5) {
-        // 台座プレート上面 (z = 2.0mm)
+      } else if (Math.abs(z - zBase) <= eps && nz > 0.5) {
+        // 台座プレート上面
         shade = 0.91;
       } else {
         // 台座側面・底面
@@ -245,7 +248,7 @@ export class PlateViewer3D {
     }
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-    const preset = FILAMENT_PRESETS[this.currentFilament] || FILAMENT_PRESETS.silkgold;
+    const preset = FILAMENT_PRESETS[this.currentFilament] || FILAMENT_PRESETS.white;
     const material = new THREE.MeshStandardMaterial({
       color: preset.color,
       roughness: preset.roughness,
